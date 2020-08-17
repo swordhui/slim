@@ -27,6 +27,7 @@
 #include "numlock.h"
 #include "util.h"
 #include "switchuser.h"
+#include "panel_drm.h"
 
 #ifdef HAVE_SHADOW
 #include <shadow.h>
@@ -218,7 +219,7 @@ void App::Run()
 	}
 
 
-	LoginPanel = new Panel();
+	LoginPanel = new Panel_drm();
 
 	DisplayName=LoginPanel->getDisplayName();
 	DisplayEnv=LoginPanel->getDisplayEnv();

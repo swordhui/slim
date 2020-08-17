@@ -72,7 +72,7 @@ private:
 	int WaitForServer();
 
 	/* Private data */
-	Panel *LoginPanel;
+	PanelBase *LoginPanel;
 	int ServerPID;
 	bool serverStarted;
 

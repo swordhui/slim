@@ -66,6 +66,7 @@ set(common_srcs
     image.cpp
     log.cpp
     panel.cpp
+    panel_drm.cpp
     util.cpp
 )
 if(USE_PAM)
