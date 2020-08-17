@@ -24,12 +24,13 @@ Panel::Panel()
 {
 	logStream << "Panel:: initialized." << endl;
 	Dpy = NULL;
+	DisplayName = DISPLAY;
+	DisplayEnv = "DISPLAY";
 }
 
 void Panel::InitPanel(Cfg* config, const string& themedir, PanelType panel_mode, int testing) 
 {
 
-	DisplayName = DISPLAY;
 
 #ifdef XNEST_DEBUG
 	char* p = getenv("DISPLAY");
@@ -1062,3 +1063,57 @@ void Panel::CloseDisplay()
 	if (!setjmp(CloseEnv) && Dpy)
 		XCloseDisplay(Dpy);
 }
+
+int CatchErrors(Display *dpy, XErrorEvent *ev)
+{
+	return 0;
+}
+
+void Panel::KillAllClients(Bool top)
+{
+	Window dummywindow;
+	Window *children;
+	unsigned int nchildren;
+	unsigned int i;
+	XWindowAttributes attr;
+
+	XSync(Dpy, 0);
+	XSetErrorHandler(CatchErrors);
+
+	nchildren = 0;
+	XQueryTree(Dpy, Root, &dummywindow, &dummywindow, &children, &nchildren);
+	if (!top) {
+		for (i=0; i<nchildren; i++) {
+			if (XGetWindowAttributes(Dpy, children[i], &attr) && (attr.map_state == IsViewable))
+				children[i] = XmuClientWindow(Dpy, children[i]);
+			else
+				children[i] = 0;
+		}
+	}
+
+	for (i=0; i<nchildren; i++) {
+		if (children[i])
+			XKillClient(Dpy, children[i]);
+	}
+	XFree((char *)children);
+
+	XSync(Dpy, 0);
+	XSetErrorHandler(NULL);
+}
+
+int xioerror(Display *disp)
+{
+	LoginApp->RestartServer();
+	return 0;
+}
+
+int Panel::ckSvrOpen()
+{
+	if ((Dpy = XOpenDisplay(DisplayName))) {
+		XSetIOErrorHandler(xioerror);
+		return 1;
+	} else {
+		return 0;
+	}
+}
+

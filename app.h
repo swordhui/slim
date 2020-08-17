@@ -85,6 +85,8 @@ private:
 
 
 	Cfg *cfg;
+	const char* DisplayName;
+	const char* DisplayEnv;
 
 
 	bool firstlogin;

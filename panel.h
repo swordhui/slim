@@ -36,7 +36,7 @@
 class Panel : public PanelBase {
 public:
 	Panel();
-	~Panel();
+	virtual ~Panel();
 	void InitPanel(Cfg *config, const std::string& themed, PanelType panel_mode, int testing);
 	void OpenPanel();
 	void ClosePanel();
@@ -45,7 +45,6 @@ public:
 	void Message(const std::string &text);
 	void Error(const std::string &text);
 	void EventHandler(const FieldType &curfield);
-	std::string getSession();
 
 	void Reset(void);
 	void ResetName(void);
@@ -56,6 +55,8 @@ public:
 	void setBackground(const std::string &themedir);
 	void HideCursor();
 	void CloseDisplay();
+	void KillAllClients(Bool top);
+	int ckSvrOpen();
 
 
 private:
@@ -144,8 +145,6 @@ private:
 	bool testing;
 	std::string themedir;
 
-	/* Options */
-	const char *DisplayName;
 
 	Pixmap BackgroundPixmap;
 	Atom BackgroundPixmapId;

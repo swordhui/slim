@@ -21,10 +21,12 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
+#include <pwd.h>
 
 #include "app.h"
 #include "numlock.h"
 #include "util.h"
+#include "switchuser.h"
 
 #ifdef HAVE_SHADOW
 #include <shadow.h>
@@ -110,11 +112,7 @@ int conv(int num_msg, const struct pam_message **msg,
 
 extern App* LoginApp;
 
-int xioerror(Display *disp)
-{
-	LoginApp->RestartServer();
-	return 0;
-}
+
 
 void CatchSignal(int sig)
 {
@@ -219,6 +217,12 @@ void App::Run()
 		}
 	}
 
+
+	LoginPanel = new Panel();
+
+	DisplayName=LoginPanel->getDisplayName();
+	DisplayEnv=LoginPanel->getDisplayEnv();
+
 #ifdef USE_PAM
 	try {
 		pam.start("slim");
@@ -254,7 +258,7 @@ void App::Run()
 		LoginApp->GetLock();
 
 		/* Start x-server */
-		setenv("DISPLAY", DisplayName, 1);
+		setenv(DisplayEnv, DisplayName, 1);
 		signal(SIGQUIT, CatchSignal);
 		signal(SIGTERM, CatchSignal);
 		signal(SIGKILL, CatchSignal);
@@ -289,8 +293,9 @@ void App::Run()
 
 
 	/* Create panel */
-	LoginPanel = new Panel();
 	LoginPanel->InitPanel(cfg, themedir, Panel::Mode_DM, testing);
+
+
 	bool firstloop = true; /* 1st time panel is shown (for automatic username) */
 	bool focuspass = cfg->getOption("focus_password")=="yes";
 	bool autologin = cfg->getOption("auto_login")=="yes";
@@ -327,8 +332,8 @@ void App::Run()
 
 			/* Close all clients */
 			if (!testing) {
-				KillAllClients(False);
-				KillAllClients(True);
+				LoginPanel->KillAllClients(False);
+				LoginPanel->KillAllClients(True);
 			}
 
 			/* Show panel */
@@ -516,7 +521,7 @@ void App::Login()
 		pam.setenv("USER", pw->pw_name);
 		pam.setenv("LOGNAME", pw->pw_name);
 		pam.setenv("PATH", cfg->getOption("default_path").c_str());
-		pam.setenv("DISPLAY", DisplayName);
+		pam.setenv(DisplayEnv, DisplayName);
 		pam.setenv("MAIL", maildir.c_str());
 		pam.setenv("XAUTHORITY", xauthority.c_str());
 	} catch(PAM::Exception& e) {
@@ -567,6 +572,10 @@ void App::Login()
 # endif /* USE_CONSOLEKIT */
 		char** child_env = static_cast<char**>(malloc(sizeof(char*)*Num_Of_Variables));
 		int n = 0;
+
+		char envs[256];
+		snprintf(envs,256,"%s=", DisplayEnv);
+
 		if (term) child_env[n++]=StrConcat("TERM=", term);
 		child_env[n++]=StrConcat("HOME=", pw->pw_dir);
 		child_env[n++]=StrConcat("PWD=", pw->pw_dir);
@@ -574,7 +583,7 @@ void App::Login()
 		child_env[n++]=StrConcat("USER=", pw->pw_name);
 		child_env[n++]=StrConcat("LOGNAME=", pw->pw_name);
 		child_env[n++]=StrConcat("PATH=", cfg->getOption("default_path").c_str());
-		child_env[n++]=StrConcat("DISPLAY=", DisplayName);
+		child_env[n++]=StrConcat(envs, DisplayName);
 		child_env[n++]=StrConcat("MAIL=", maildir.c_str());
 		child_env[n++]=StrConcat("XAUTHORITY=", xauthority.c_str());
 # ifdef USE_CONSOLEKIT
@@ -608,8 +617,13 @@ void App::Login()
 	int status;
 	while (wpid != pid) {
 		wpid = wait(&status);
+#if 0
+		TODO: add a new functon to Panel class?
+
 		if (wpid == ServerPID)
 			xioerror(Dpy);	/* Server died, simulate IO error */
+#endif
+
 	}
 	if (WIFEXITED(status) && WEXITSTATUS(status)) {
 		LoginPanel->Message("Failed to execute login command");
@@ -639,8 +653,8 @@ void App::Login()
 #endif
 
 /* Close all clients */
-	KillAllClients(False);
-	KillAllClients(True);
+	LoginPanel->KillAllClients(False);
+	LoginPanel->KillAllClients(True);
 
 	/* Send HUP signal to clientgroup */
 	killpg(pid, SIGHUP);
@@ -715,8 +729,8 @@ void App::Console()
 	int posy = 40;
 	int fontx = 9;
 	int fonty = 15;
-	int width = (XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)) - (posx * 2)) / fontx;
-	int height = (XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)) - (posy * 2)) / fonty;
+	int width = 800;
+	int height = 600;
 
 	/* Execute console */
 	const char* cmd = cfg->getOption("console_cmd").c_str();
@@ -740,8 +754,8 @@ void App::Exit()
 		const char* testmsg = "This is a test message :-)";
 		LoginPanel->Message(testmsg);
 		sleep(3);
+		LoginPanel->CloseDisplay();
 		delete LoginPanel;
-		XCloseDisplay(Dpy);
 	} else {
 		delete LoginPanel;
 		StopServer();
@@ -751,10 +765,6 @@ void App::Exit()
 	exit(OK_EXIT);
 }
 
-int CatchErrors(Display *dpy, XErrorEvent *ev)
-{
-	return 0;
-}
 
 void App::RestartServer()
 {
@@ -772,37 +782,6 @@ void App::RestartServer()
 	Run();
 }
 
-void App::KillAllClients(Bool top)
-{
-	Window dummywindow;
-	Window *children;
-	unsigned int nchildren;
-	unsigned int i;
-	XWindowAttributes attr;
-
-	XSync(Dpy, 0);
-	XSetErrorHandler(CatchErrors);
-
-	nchildren = 0;
-	XQueryTree(Dpy, Root, &dummywindow, &dummywindow, &children, &nchildren);
-	if (!top) {
-		for (i=0; i<nchildren; i++) {
-			if (XGetWindowAttributes(Dpy, children[i], &attr) && (attr.map_state == IsViewable))
-				children[i] = XmuClientWindow(Dpy, children[i]);
-			else
-				children[i] = 0;
-		}
-	}
-
-	for (i=0; i<nchildren; i++) {
-		if (children[i])
-			XKillClient(Dpy, children[i]);
-	}
-	XFree((char *)children);
-
-	XSync(Dpy, 0);
-	XSetErrorHandler(NULL);
-}
 
 int App::ServerTimeout(int timeout, char* text)
 {
@@ -838,10 +817,11 @@ int App::WaitForServer()
 {
 	int	ncycles	 = 120;
 	int	cycles;
+	int iRet;
 
 	for (cycles = 0; cycles < ncycles; cycles++) {
-		if ((Dpy = XOpenDisplay(DisplayName))) {
-			XSetIOErrorHandler(xioerror);
+		iRet=LoginPanel->ckSvrOpen();
+		if (iRet) {
 			return 1;
 		} else {
 			if (!ServerTimeout(1, (char *) "X server to begin accepting connections"))
@@ -856,7 +836,6 @@ int App::WaitForServer()
 
 int App::StartServer()
 {
-	ServerPID = fork();
 
 	int argc = 1, pos = 0, i;
 	static const int MAX_XSERVER_ARGS = 256;
@@ -903,6 +882,14 @@ int App::StartServer()
 	}
 	server[argc] = NULL;
 
+	if(server[0][0]==0)
+	{
+		//NULL server
+		logStream << APPNAME << "NULL server found" << endl;
+		return -1;
+	}
+
+	ServerPID = fork();
 	switch (ServerPID) {
 	case 0:
 		signal(SIGTTIN, SIG_IGN);

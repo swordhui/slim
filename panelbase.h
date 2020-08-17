@@ -80,11 +80,16 @@ public:
 	virtual void SetName(const std::string &name)=0;
 	const std::string& GetName(void) const {return NameBuffer;} 
 	const std::string& GetPasswd(void) const {return PasswdBuffer;}
+
+	virtual const char* getDisplayName(void) {return DisplayName;}
+	virtual const char* getDisplayEnv(void) {return DisplayEnv;}
 	virtual void SwitchSession()=0;
 	virtual void blankScreen()=0;
 	virtual void setBackground(const std::string &themedir)=0;
 	virtual void HideCursor()=0;
 	virtual void CloseDisplay()=0;
+	virtual void KillAllClients(Bool top)=0;
+	virtual int ckSvrOpen()=0;
 
 protected:
 	ActionType action;
@@ -95,6 +100,10 @@ protected:
 	/* Session handling */
 	std::string session_name;
     std::string session_exec;
+
+	/* Options */
+	const char *DisplayName;
+	const char *DisplayEnv;
 };
 
 #endif /* _PANEL_H_ */
