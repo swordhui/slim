@@ -132,11 +132,14 @@ Cfg::Cfg()
 	options.insert(option("tty_lock", "1"));
 	options.insert(option("bell", "1"));
 
+	printf("cfg: options init ok\n");
+
 	error = "";
 }
 
 Cfg::~Cfg() {
 	options.clear();
+	printf("cfg: options de-init\n");
 }
 /*
  * Creates the Cfg object and parses
@@ -193,7 +196,16 @@ const string& Cfg::getError() const {
 }
 
 string& Cfg::getOption(string option) {
+
+	try{
+	printf("Get option %s\n", option.c_str());
+
+	printf(" option %s = %s \n", option.c_str(), options[option].c_str());
 	return options[option];
+	}catch(...)
+	{
+		printf("get option %s failed.", option.c_str());
+	}
 }
 
 /* return a trimmed string */
