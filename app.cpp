@@ -45,7 +45,7 @@ int conv(int num_msg, const struct pam_message **msg,
 
 	for (i = 0; i < num_msg; i++) {
 		(*resp)[i].resp = 0;
-		(*resp)[i].resp_retcodei = 0;
+		(*resp)[i].resp_retcode = 0;
 		switch (msg[i]->msg_style) {
 			case PAM_PROMPT_ECHO_ON:
 				/* We assume PAM is asking for the username */
@@ -149,7 +149,6 @@ App::App(int argc, char** argv)
 	daemonmode = false;
 	force_nodaemon = false;
 	firstlogin = true;
-	Dpy = NULL;
 
 	/* Parse command line
 	   Note: we force a option for nodaemon switch to handle "-nodaemon" */
@@ -198,16 +197,6 @@ App::App(int argc, char** argv)
 
 void App::Run()
 {
-	DisplayName = DISPLAY;
-
-#ifdef XNEST_DEBUG
-	char* p = getenv("DISPLAY");
-	if (p && p[0]) {
-		DisplayName = p;
-		cout << "Using display name " << DisplayName << endl;
-	}
-#endif
-
 	/* Read configuration and theme */
 	cfg = new Cfg;
 	cfg->readConf(CFGFILE);
@@ -298,35 +287,10 @@ void App::Run()
 
 	}
 
-	/* Open display */
-	if ((Dpy = XOpenDisplay(DisplayName)) == 0) {
-		logStream << APPNAME << ": could not open display '"
-			 << DisplayName << "'" << endl;
-		if (!testing) StopServer();
-		exit(ERR_EXIT);
-	}
-
-	/* Get screen and root window */
-	Scr = DefaultScreen(Dpy);
-	Root = RootWindow(Dpy, Scr);
-
-	// Intern _XROOTPMAP_ID property
-	BackgroundPixmapId = XInternAtom(Dpy, "_XROOTPMAP_ID", False);
-
-	/* for tests we use a standard window */
-	if (testing) {
-		Window RealRoot = RootWindow(Dpy, Scr);
-		Root = XCreateSimpleWindow(Dpy, RealRoot, 0, 0, 1280, 1024, 0, 0, 0);
-		XMapWindow(Dpy, Root);
-		XFlush(Dpy);
-	} else {
-		blankScreen();
-	}
-
-	HideCursor();
 
 	/* Create panel */
-	LoginPanel = new Panel(Dpy, Scr, Root, cfg, themedir, Panel::Mode_DM);
+	LoginPanel = new Panel();
+	LoginPanel->InitPanel(cfg, themedir, Panel::Mode_DM, testing);
 	bool firstloop = true; /* 1st time panel is shown (for automatic username) */
 	bool focuspass = cfg->getOption("focus_password")=="yes";
 	bool autologin = cfg->getOption("auto_login")=="yes";
@@ -342,6 +306,7 @@ void App::Run()
 		}
 	}
 
+#if 0
 	/* Set NumLock */
 	string numlock = cfg->getOption("numlock");
 	if (numlock == "on") {
@@ -349,6 +314,7 @@ void App::Run()
 	} else if (numlock == "off") {
 		NumLock::setOff(Dpy);
 	}
+#endif
 
 	/* Start looping */
 	int panelclosed = 1;
@@ -357,7 +323,7 @@ void App::Run()
 	while (1) {
 		if (panelclosed) {
 			/* Init root */
-			setBackground(themedir);
+			LoginPanel->setBackground(themedir);
 
 			/* Close all clients */
 			if (!testing) {
@@ -381,7 +347,7 @@ void App::Run()
 			panelclosed = 0;
 			firstloop = false;
 			LoginPanel->ClearPanel();
-			XBell(Dpy, 100);
+			//XBell(Dpy, 100);
 			continue;
 		}
 
@@ -502,23 +468,6 @@ int App::GetServerPID()
 	return ServerPID;
 }
 
-/* Hide the cursor */
-void App::HideCursor()
-{
-	if (cfg->getOption("hidecursor") == "true") {
-		XColor			black;
-		char			cursordata[1];
-		Pixmap			cursorpixmap;
-		Cursor			cursor;
-		cursordata[0]=0;
-		cursorpixmap=XCreateBitmapFromData(Dpy,Root,cursordata,1,1);
-		black.red=0;
-		black.green=0;
-		black.blue=0;
-		cursor=XCreatePixmapCursor(Dpy,cursorpixmap,cursorpixmap,&black,&black,0,0);
-		XDefineCursor(Dpy,Root,cursor);
-	}
-}
 
 void App::Login()
 {
@@ -700,7 +649,7 @@ void App::Login()
 	if (killpg(pid, SIGTERM))
 	killpg(pid, SIGKILL);
 
-	HideCursor();
+	LoginPanel->HideCursor();
 
 #ifndef XNEST_DEBUG
 	/* Re-activate log file */
@@ -993,12 +942,7 @@ int App::StartServer()
 	return ServerPID;
 }
 
-jmp_buf CloseEnv;
-int IgnoreXIO(Display *d)
-{
-	logStream << APPNAME << ": connection to X server lost." << endl;
-	longjmp(CloseEnv, 1);
-}
+
 
 void App::StopServer()
 {
@@ -1009,10 +953,7 @@ void App::StopServer()
 	signal(SIGTERM, SIG_DFL);
 	signal(SIGKILL, SIG_DFL);
 
-	/* Catch X error */
-	XSetIOErrorHandler(IgnoreXIO);
-	if (!setjmp(CloseEnv) && Dpy)
-		XCloseDisplay(Dpy);
+	LoginPanel->CloseDisplay();
 
 	/* Send HUP to process group */
 	errno = 0;
@@ -1058,60 +999,7 @@ void App::StopServer()
 	logStream << endl;
 }
 
-void App::blankScreen()
-{
-	GC gc = XCreateGC(Dpy, Root, 0, 0);
-	XSetForeground(Dpy, gc, BlackPixel(Dpy, Scr));
-	XFillRectangle(Dpy, Root, gc, 0, 0,
-				   XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
-				   XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
-	XFlush(Dpy);
-	XFreeGC(Dpy, gc);
 
-}
-
-void App::setBackground(const string& themedir)
-{
-	string filename;
-	filename = themedir + "/background.png";
-	image = new Image;
-	bool loaded = image->Read(filename.c_str());
-	if (!loaded) { /* try jpeg if png failed */
-		filename = themedir + "/background.jpg";
-		loaded = image->Read(filename.c_str());
-	}
-
-	if (loaded) {
-		string bgstyle = cfg->getOption("background_style");
-		if (bgstyle == "stretch") {
-			image->Resize(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
-						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
-		} else if (bgstyle == "tile") {
-			image->Tile(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
-						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
-		} else if (bgstyle == "center") {
-			string hexvalue = cfg->getOption("background_color");
-			hexvalue = hexvalue.substr(1,6);
-			image->Center(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
-						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)),
-						hexvalue.c_str());
-		} else { /* plain color or error */
-			string hexvalue = cfg->getOption("background_color");
-			hexvalue = hexvalue.substr(1,6);
-			image->Center(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
-						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)),
-						hexvalue.c_str());
-		}
-		Pixmap p = image->createPixmap(Dpy, Scr, Root);
-		XSetWindowBackgroundPixmap(Dpy, Root, p);
-		XChangeProperty(Dpy, Root, BackgroundPixmapId, XA_PIXMAP, 32,
-			PropModeReplace, (unsigned char *)&p, 1);
-	}
-	XClearWindow(Dpy, Root);
-
-	XFlush(Dpy);
-	delete image;
-}
 
 /* Check if there is a lockfile and a corresponding process */
 void App::GetLock()

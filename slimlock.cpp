@@ -27,6 +27,7 @@
 #include <errno.h>
 #include <sys/file.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "cfg.h"
 #include "util.h"
@@ -179,7 +180,8 @@ int main(int argc, char **argv) {
 	// configuration
 	HideCursor();
 
-	loginPanel = new Panel(dpy, scr, win, cfg, themedir, Panel::Mode_Lock);
+	loginPanel = new Panel();
+	loginPanel->InitPanel(cfg, themedir, Panel::Mode_Lock, 0);
 
 	int ret = pam_start(APPNAME, loginPanel->GetName().c_str(), &conv, &pam_handle);
 	// If we can't start PAM, just exit because slimlock won't work right

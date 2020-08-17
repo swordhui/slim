@@ -12,8 +12,6 @@
 #ifndef _APP_H_
 #define _APP_H_
 
-#include <X11/Xlib.h>
-#include <X11/Xatom.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -23,7 +21,6 @@
 #include <iostream>
 #include "panel.h"
 #include "cfg.h"
-#include "image.h"
 
 #ifdef USE_PAM
 #include "PAM.h"
@@ -58,7 +55,6 @@ private:
 	void ReadConfig();
 	void OpenLog();
 	void CloseLog();
-	void HideCursor();
 	void CreateServerAuth();
 	char *StrConcat(const char *str1, const char *str2);
 	void UpdatePid();
@@ -76,12 +72,8 @@ private:
 	int WaitForServer();
 
 	/* Private data */
-	Window Root;
-	Display *Dpy;
-	int Scr;
 	Panel *LoginPanel;
 	int ServerPID;
-	const char *DisplayName;
 	bool serverStarted;
 
 #ifdef USE_PAM
@@ -91,17 +83,9 @@ private:
 	Ck::Session ck;
 #endif
 
-	/* Options */
-	char *DispName;
 
 	Cfg *cfg;
 
-	Pixmap BackgroundPixmap;
-
-	void blankScreen();
-	Image *image;
-	Atom BackgroundPixmapId;
-	void setBackground(const std::string &themedir);
 
 	bool firstlogin;
 	bool daemonmode;

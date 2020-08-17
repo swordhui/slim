@@ -12,23 +12,73 @@
 #include <sstream>
 #include <poll.h>
 #include <X11/extensions/Xrandr.h>
+#include "app.h"
 #include "panel.h"
 
 using namespace std;
 
-Panel::Panel(Display* dpy, int scr, Window root, Cfg* config,
-			 const string& themedir, PanelType panel_mode) {
+
+extern App* LoginApp;
+
+Panel::Panel()
+{
+	logStream << "Panel:: initialized." << endl;
+	Dpy = NULL;
+}
+
+void Panel::InitPanel(Cfg* config, const string& themedir, PanelType panel_mode, int testing) 
+{
+
+	DisplayName = DISPLAY;
+
+#ifdef XNEST_DEBUG
+	char* p = getenv("DISPLAY");
+	if (p && p[0]) {
+		DisplayName = p;
+		cout << "Using display name " << DisplayName << endl;
+	}
+#endif
+
+	/* Open display */
+	if ((Dpy = XOpenDisplay(DisplayName)) == 0) {
+		logStream << APPNAME << ": could not open display '"
+			 << DisplayName << "'" << endl;
+		if (!testing) LoginApp->StopServer();
+		exit(ERR_EXIT);
+	}
+
+	/* Get screen and root window */
+	Scr = DefaultScreen(Dpy);
+	Root = RootWindow(Dpy, Scr);
+
+	// Intern _XROOTPMAP_ID property
+	BackgroundPixmapId = XInternAtom(Dpy, "_XROOTPMAP_ID", False);
+
+	/* for tests we use a standard window */
+	if (testing) {
+		Window RealRoot = RootWindow(Dpy, Scr);
+		Root = XCreateSimpleWindow(Dpy, RealRoot, 0, 0, 1280, 1024, 0, 0, 0);
+		XMapWindow(Dpy, Root);
+		XFlush(Dpy);
+	} else {
+		blankScreen();
+	}
+
+	HideCursor();
+
+
+
+
+
+	//Display* dpy, int scr, Window root, 
 	/* Set display */
-	Dpy = dpy;
-	Scr = scr;
-	Root = root;
 	cfg = config;
 	mode = panel_mode;
 
 	session_name = "";
     session_exec = "";
 	if (mode == Mode_Lock) {
-		Win = root;
+		Win = Root;
 		viewport = GetPrimaryViewport();
 	}
 
@@ -271,7 +321,7 @@ void Panel::ClearPanel() {
 	Reset();
 	XClearWindow(Dpy, Root);
 	XClearWindow(Dpy, Win);
-	Cursor(SHOW);
+	SetCursor(SHOW);
 	ShowText();
 	XFlush(Dpy);
 }
@@ -382,7 +432,7 @@ unsigned long Panel::GetColor(const char* colorname) {
 	return color.pixel;
 }
 
-void Panel::Cursor(int visible) {
+void Panel::SetCursor(int visible) {
 	const char* text = NULL;
 	int xx = 0, yy = 0, y2 = 0, cheight = 0;
 	const char* txth = "Wj"; /* used to get cursor height */
@@ -506,7 +556,7 @@ void Panel::OnExpose(void) {
 	}
 
 	XftDrawDestroy (draw);
-	Cursor(SHOW);
+	SetCursor(SHOW);
 	ShowText();
 }
 
@@ -577,7 +627,7 @@ bool Panel::OnKeyPress(XEvent& event) {
 			break;
 	};
 
-	Cursor(HIDE);
+	SetCursor(HIDE);
 	switch(keysym){
 		case XK_Delete:
 		case XK_BackSpace:
@@ -677,7 +727,7 @@ bool Panel::OnKeyPress(XEvent& event) {
 	}
 
 	XftDrawDestroy (draw);
-	Cursor(SHOW);
+	SetCursor(SHOW);
 	return true;
 }
 
@@ -754,9 +804,6 @@ void Panel::ShowText(){
 	}
 }
 
-string Panel::getSession() {
-	return session_exec;
-}
 
 /* choose next available session type */
 void Panel::SwitchSession() {
@@ -824,9 +871,6 @@ void Panel::SlimDrawString8(XftDraw *d, XftColor *color, XftFont *font,
 		str.length());
 }
 
-Panel::ActionType Panel::getAction(void) const{
-	return action;
-}
 
 void Panel::Reset(void){
 	ResetName();
@@ -848,14 +892,6 @@ void Panel::SetName(const string& name){
 		action = Login;
 	else
 		action = Lock;
-}
-
-const string& Panel::GetName(void) const{
-	return NameBuffer;
-}
-
-const string& Panel::GetPasswd(void) const{
-	return PasswdBuffer;
 }
 
 Rectangle Panel::GetPrimaryViewport() {
@@ -937,4 +973,92 @@ void Panel::ApplyBackground(Rectangle rect) {
 
 	if (!ret)
 	    cerr << APPNAME << ": failed to put pixmap on the screen\n.";
+}
+
+/* Hide the cursor */
+void Panel::HideCursor()
+{
+	if (cfg->getOption("hidecursor") == "true") {
+		XColor			black;
+		char			cursordata[1];
+		Pixmap			cursorpixmap;
+		Cursor			cursor;
+		cursordata[0]=0;
+		cursorpixmap=XCreateBitmapFromData(Dpy,Root,cursordata,1,1);
+		black.red=0;
+		black.green=0;
+		black.blue=0;
+		cursor=XCreatePixmapCursor(Dpy,cursorpixmap,cursorpixmap,&black,&black,0,0);
+		XDefineCursor(Dpy,Root,cursor);
+	}
+}
+
+void Panel::setBackground(const string& themedir)
+{
+	string filename;
+	filename = themedir + "/background.png";
+	image = new Image;
+	bool loaded = image->Read(filename.c_str());
+	if (!loaded) { /* try jpeg if png failed */
+		filename = themedir + "/background.jpg";
+		loaded = image->Read(filename.c_str());
+	}
+
+	if (loaded) {
+		string bgstyle = cfg->getOption("background_style");
+		if (bgstyle == "stretch") {
+			image->Resize(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
+						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
+		} else if (bgstyle == "tile") {
+			image->Tile(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
+						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
+		} else if (bgstyle == "center") {
+			string hexvalue = cfg->getOption("background_color");
+			hexvalue = hexvalue.substr(1,6);
+			image->Center(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
+						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)),
+						hexvalue.c_str());
+		} else { /* plain color or error */
+			string hexvalue = cfg->getOption("background_color");
+			hexvalue = hexvalue.substr(1,6);
+			image->Center(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
+						XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)),
+						hexvalue.c_str());
+		}
+		Pixmap p = image->createPixmap(Dpy, Scr, Root);
+		XSetWindowBackgroundPixmap(Dpy, Root, p);
+		XChangeProperty(Dpy, Root, BackgroundPixmapId, XA_PIXMAP, 32,
+			PropModeReplace, (unsigned char *)&p, 1);
+	}
+	XClearWindow(Dpy, Root);
+
+	XFlush(Dpy);
+	delete image;
+}
+
+void Panel::blankScreen()
+{
+	GC gc = XCreateGC(Dpy, Root, 0, 0);
+	XSetForeground(Dpy, gc, BlackPixel(Dpy, Scr));
+	XFillRectangle(Dpy, Root, gc, 0, 0,
+				   XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)),
+				   XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
+	XFlush(Dpy);
+	XFreeGC(Dpy, gc);
+
+}
+
+jmp_buf CloseEnv;
+int IgnoreXIO(Display *d)
+{
+	logStream << APPNAME << ": connection to X server lost." << endl;
+	longjmp(CloseEnv, 1);
+}
+
+void Panel::CloseDisplay()
+{
+	/* Catch X error */
+	XSetIOErrorHandler(IgnoreXIO);
+	if (!setjmp(CloseEnv) && Dpy)
+		XCloseDisplay(Dpy);
 }

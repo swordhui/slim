@@ -14,6 +14,7 @@
 #define _PANEL_H_
 
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
 #include <X11/cursorfont.h>
@@ -28,50 +29,15 @@
 #include <libgen.h>
 #endif
 
-#include "switchuser.h"
 #include "log.h"
 #include "image.h"
+#include "panelbase.h"
 
-struct Rectangle {
-	int x;
-	int y;
-	unsigned int width;
-	unsigned int height;
-
-	Rectangle() : x(0), y(0), width(0), height(0) {};
-	Rectangle(int x, int y, unsigned int width,
-					unsigned int height) :
-		x(x), y(y), width(width), height(height) {};
-	bool is_empty() const {
-		return width == 0 || height == 0;
-	}
-};
-
-class Panel {
+class Panel : public PanelBase {
 public:
-	enum ActionType {
-		Login,
-		Lock,
-		Console,
-		Reboot,
-		Halt,
-		Exit,
-		Suspend
-	};
-
-	enum FieldType {
-		Get_Name,
-		Get_Passwd
-	};
-
-	enum PanelType {
-		Mode_DM,
-		Mode_Lock
-	};
-
-	Panel(Display *dpy, int scr, Window root, Cfg *config,
-		  const std::string& themed, PanelType panel_mode);
+	Panel();
 	~Panel();
+	void InitPanel(Cfg *config, const std::string& themed, PanelType panel_mode, int testing);
 	void OpenPanel();
 	void ClosePanel();
 	void ClearPanel();
@@ -80,18 +46,20 @@ public:
 	void Error(const std::string &text);
 	void EventHandler(const FieldType &curfield);
 	std::string getSession();
-	ActionType getAction(void) const;
 
 	void Reset(void);
 	void ResetName(void);
 	void ResetPasswd(void);
 	void SetName(const std::string &name);
-	const std::string& GetName(void) const;
-	const std::string& GetPasswd(void) const;
 	void SwitchSession();
+	void blankScreen();
+	void setBackground(const std::string &themedir);
+	void HideCursor();
+	void CloseDisplay();
+
+
 private:
-	Panel();
-	void Cursor(int visible);
+	void SetCursor(int visible);
 	unsigned long GetColor(const char *colorname);
 	void OnExpose(void);
 	void EraseLastChar(string &formerString);
@@ -134,14 +102,10 @@ private:
 	XftFont *enterfont;
 	XftColor entercolor;
 	XftColor entershadowcolor;
-	ActionType action;
 	FieldType field;
 	//Pixmap   background;
 	
 	/* Username/Password */
-	std::string NameBuffer;
-	std::string PasswdBuffer;
-	std::string HiddenPasswdBuffer;
 
 	/* screen stuff */
 	Rectangle viewport;
@@ -180,9 +144,12 @@ private:
 	bool testing;
 	std::string themedir;
 
-	/* Session handling */
-	std::string session_name;
-    std::string session_exec;
+	/* Options */
+	const char *DisplayName;
+
+	Pixmap BackgroundPixmap;
+	Atom BackgroundPixmapId;
+
 };
 
 #endif /* _PANEL_H_ */

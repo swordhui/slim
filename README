@@ -3,7 +3,7 @@ README file for SLiM
 Nobuhiro Iwamatsu <iwamatsu@nigauri.org>
 
 INTRODUCTION
-    SLiM (Simple Login Manager) is a graphical login manager for X11.
+    SLiM (Simple Login Manager) is a graphical login manager for X11 or DRM.
     It aims to be simple, fast and independent from the various
     desktop environments.
     SLiM is based on latest stable release of Login.app by Per Lidén.
@@ -15,6 +15,7 @@ INTRODUCTION
     - XFT / freetype support
     - Double or single (GDM-style) inputbox support
     - CMake build procedure
+	- multi-backends: X11 or DRM
 
 INSTALLATION
     see the INSTALL file
