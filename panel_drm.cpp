@@ -33,8 +33,10 @@ void Panel_drm::InitPanel(Cfg* config, const string& themedir, PanelType panel_m
 	string intro_message;
 
 	/* Read (and substitute vars in) the welcome message */
-	welcome_message = cfg->getWelcomeMessage();
-	intro_message = cfg->getOption("intro_msg");
+	//welcome_message = cfg->getWelcomeMessage();
+	//intro_message = cfg->getOption("intro_msg");
+	welcome_message = "welcome";
+	intro_message = "hello";
 
 	cfg=config;
 	mode=panel_mode;
@@ -65,7 +67,7 @@ void Panel_drm::ClosePanel()
 
 void Panel_drm::ClearPanel() 
 {
-	printf("Panel_drm: clear_panel.\n");
+	//printf("Panel_drm: clear_panel.\n");
 }
 
 void Panel_drm::WrongPassword(int timeout) 
@@ -96,6 +98,23 @@ void Panel_drm::Error(const string& text)
 
 void Panel_drm::EventHandler(const Panel_drm::FieldType& curfield) {
 	printf("On EventHandler: curfield=%d\n", curfield);
+
+	char buf[256];
+
+	if(curfield==Get_Name)
+	{
+		printf("User Name:");
+		scanf("%s", buf);
+		NameBuffer=buf;
+
+
+		printf("Password:");
+		scanf("%s", buf);
+		PasswdBuffer=buf;
+		action=PanelBase::Login;
+	}
+
+
 	return;
 }
 

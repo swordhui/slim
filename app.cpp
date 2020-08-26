@@ -27,6 +27,7 @@
 #include "numlock.h"
 #include "util.h"
 #include "switchuser.h"
+#include "panelbase.h"
 #include "panel_drm.h"
 
 #ifdef HAVE_SHADOW
@@ -42,9 +43,12 @@ int conv(int num_msg, const struct pam_message **msg,
 		 struct pam_response **resp, void *appdata_ptr)
 {
 	*resp = (struct pam_response *) calloc(num_msg, sizeof(struct pam_response));
-	Panel* panel = *static_cast<Panel**>(appdata_ptr);
+	PanelBase* panel = *static_cast<PanelBase**>(appdata_ptr);
 	int result = PAM_SUCCESS;
 	int i;
+
+
+	logStream << "Pam.Conv: num_msg=" << num_msg << endl;
 
 	for (i = 0; i < num_msg; i++) {
 		(*resp)[i].resp = 0;
@@ -52,18 +56,20 @@ int conv(int num_msg, const struct pam_message **msg,
 		switch (msg[i]->msg_style) {
 			case PAM_PROMPT_ECHO_ON:
 				/* We assume PAM is asking for the username */
-				panel->EventHandler(Panel::Get_Name);
+				logStream << "Pam.Conv: PROMPT_ECHO_ON" <<  endl;
+				panel->EventHandler(PanelBase::Get_Name);
 				switch (panel->getAction()) {
-					case Panel::Suspend:
-					case Panel::Halt:
-					case Panel::Reboot:
+					case PanelBase::Suspend:
+					case PanelBase::Halt:
+					case PanelBase::Reboot:
 						(*resp)[i].resp=strdup("root");
 						break;
 
-					case Panel::Console:
-					case Panel::Exit:
-					case Panel::Login:
+					case PanelBase::Console:
+					case PanelBase::Exit:
+					case PanelBase::Login:
 						(*resp)[i].resp=strdup(panel->GetName().c_str());
+						logStream << "Pam.Conv: Name=" << panel->GetName() << endl;
 						break;
 					default:
 						break;
@@ -71,17 +77,19 @@ int conv(int num_msg, const struct pam_message **msg,
 				break;
 
 			case PAM_PROMPT_ECHO_OFF:
+				logStream << "Pam.Conv: PROMPT_ECHO_OFF" <<  endl;
 				/* We assume PAM is asking for the password */
 				switch (panel->getAction()) {
-					case Panel::Console:
-					case Panel::Exit:
+					case PanelBase::Console:
+					case PanelBase::Exit:
 						/* We should leave now! */
 						result = PAM_CONV_ERR;
 						break;
 
 					default:
-						panel->EventHandler(Panel::Get_Passwd);
+						panel->EventHandler(PanelBase::Get_Passwd);
 						(*resp)[i].resp=strdup(panel->GetPasswd().c_str());
+						logStream << "Pam.Conv: Name=" << panel->GetPasswd() << endl;
 						break;
 				}
 				break;
@@ -219,6 +227,9 @@ void App::Run()
 	}
 
 
+	OpenLog();
+	logStream << APPNAME << ": slim running ... " << endl;
+
 	LoginPanel = new Panel_drm();
 
 	DisplayName=LoginPanel->getDisplayName();
@@ -281,7 +292,6 @@ void App::Run()
 			}
 		}
 
-		OpenLog();
 
 		if (daemonmode)
 			UpdatePid();
@@ -349,11 +359,13 @@ void App::Run()
         if (firstloop)
             LoginPanel->SwitchSession();
 
+		logStream << APPNAME << ": Begin call pam.authenticate.." << endl;
 		if (!AuthenticateUser(focuspass && firstloop)) {
 			panelclosed = 0;
 			firstloop = false;
 			LoginPanel->ClearPanel();
 			//XBell(Dpy, 100);
+			logStream << APPNAME << ": Authenticate failed, XBell.." << endl;
 			continue;
 		}
 
@@ -886,7 +898,7 @@ int App::StartServer()
 	if(server[0][0]==0)
 	{
 		//NULL server
-		logStream << APPNAME << "NULL server found" << endl;
+		logStream << APPNAME << " : NULL server found" << endl;
 		return -1;
 	}
 
@@ -1003,6 +1015,9 @@ void App::GetLock()
 		}
 		lockfile << getpid() << std::endl;
 		lockfile.close();
+
+		logStream << APPNAME << ": create lock file: " <<
+					cfg->getOption("lockfile").c_str() << std::endl;
 	} else {
 		/* lockfile present, read pid from it */
 		int pid = 0;
@@ -1052,6 +1067,7 @@ void App::OpenLog()
 		RemoveLock();
 		exit(ERR_EXIT);
 	}
+	logStream <<  APPNAME << ": log opened: " << cfg->getOption("logfile") << endl;
 	/* I should set the buffers to imediate write, but I just flush on every << operation. */
 }
 
