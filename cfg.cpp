@@ -175,7 +175,12 @@ bool Cfg::readConf(string configfile) {
 			op = it->first;
 			n = line.find(op);
 			if (n == 0)
-				options[op] = parseOption(line, op);
+			{
+				string s=parseOption(line, op);
+				options[op] = s ;
+
+				printf("add option %s = %s\n", op.c_str(), s.c_str());
+			}
 			++it;
 		}
 	}
@@ -195,17 +200,20 @@ const string& Cfg::getError() const {
 	return error;
 }
 
-string& Cfg::getOption(string option) {
+string Cfg::getOption(string option) {
 
+	string s;
 	try{
-	printf("Get option %s\n", option.c_str());
 
-	printf(" option %s = %s \n", option.c_str(), options[option].c_str());
-	return options[option];
+		s=options[option];
+
+		printf(" get option %s = %s \n", option.c_str(), s.c_str());
 	}catch(...)
 	{
 		printf("get option %s failed.", option.c_str());
 	}
+
+	return s;
 }
 
 /* return a trimmed string */
@@ -233,6 +241,9 @@ string Cfg::Trim( const string& s ) {
 /* Return the welcome message with replaced vars */
 string Cfg::getWelcomeMessage(){
 	string s = getOption("welcome_msg");
+
+	printf("welcome msg: %s \n", s.c_str());
+
 	int n = s.find("%host");
 	if (n >= 0) {
 		string tmp = s.substr(0, n);

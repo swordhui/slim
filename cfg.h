@@ -31,7 +31,7 @@ public:
 	bool readConf(std::string configfile);
 	std::string parseOption(std::string line, std::string option);
 	const std::string& getError() const;
-	std::string& getOption(std::string option);
+	std::string getOption(std::string option);
 	int getIntOption(std::string option);
 	std::string getWelcomeMessage();
 
